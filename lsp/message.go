@@ -8,7 +8,7 @@ type Request struct {
 	//params ...
 }
 
-type Respone struct {
+type Response struct {
 	RPC string `json:"jsonrpc"`
 	Id  *int   `json:"id"`
 
