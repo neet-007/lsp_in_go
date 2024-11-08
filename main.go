@@ -58,8 +58,18 @@ func handleMessage(logger *log.Logger, writer io.Writer, state analysis.State, m
 				return
 			}
 			logger.Printf("text document with uri:%s\n", didOpenTextDocumentNotification.Params.TextDocument.URI)
-			state.OpenDocument(didOpenTextDocumentNotification.Params.TextDocument.URI,
+			diagnostics := state.OpenDocument(didOpenTextDocumentNotification.Params.TextDocument.URI,
 				didOpenTextDocumentNotification.Params.TextDocument.Text)
+			writeResponse(writer, lsp.PublishDiagnosticsNotification{
+				Notification: lsp.Notification{
+					RPC:    "2.0",
+					Method: "textDocument/publishDiagnostics",
+				},
+				Params: lsp.PublishDiagnosticsParams{
+					URI:         didOpenTextDocumentNotification.Params.TextDocument.URI,
+					Diagnostics: diagnostics,
+				},
+			})
 		}
 	case "textDocument/didChange":
 		{
@@ -70,13 +80,21 @@ func handleMessage(logger *log.Logger, writer io.Writer, state analysis.State, m
 			}
 
 			logger.Printf("Changed: %s", didChangeTextDocumentNotification.Params.TextDocument.URI)
-			logger.Println(didChangeTextDocumentNotification)
-			logger.Printf("text document with uri:%s\n", didChangeTextDocumentNotification.Params.TextDocument.URI)
 			for _, change := range didChangeTextDocumentNotification.Params.ContentChanges {
-				state.OpenDocument(didChangeTextDocumentNotification.Params.TextDocument.URI, change.Text)
+				diagnostics := state.UpdateDocument(didChangeTextDocumentNotification.Params.TextDocument.URI, change.Text)
+				writeResponse(writer, lsp.PublishDiagnosticsNotification{
+					Notification: lsp.Notification{
+						RPC:    "2.0",
+						Method: "textDocument/publishDiagnostics",
+					},
+					Params: lsp.PublishDiagnosticsParams{
+						URI:         didChangeTextDocumentNotification.Params.TextDocument.URI,
+						Diagnostics: diagnostics,
+					},
+				})
 			}
 		}
-	case "textDocument/definition":
+	case "textDocument/hover":
 		{
 			var request lsp.HoverRequest
 			if err := json.Unmarshal(content, &request); err != nil {
@@ -85,6 +103,42 @@ func handleMessage(logger *log.Logger, writer io.Writer, state analysis.State, m
 			}
 
 			response := state.Hover(request.Id, request.Params.TextDocument.URI, request.Params.Position)
+
+			writeResponse(writer, response)
+		}
+	case "textDocument/definition":
+		{
+			var request lsp.DefinitionRequest
+			if err := json.Unmarshal(content, &request); err != nil {
+				logger.Printf("textDocument/definition: %s", err)
+				return
+			}
+
+			response := state.Definition(request.Id, request.Params.TextDocument.URI, request.Params.Position)
+
+			writeResponse(writer, response)
+		}
+	case "textDocument/codeAction":
+		{
+			var request lsp.CodeActionRequest
+			if err := json.Unmarshal(content, &request); err != nil {
+				logger.Printf("textDocument/codeAction: %s", err)
+				return
+			}
+
+			response := state.TextDocumentCodeAction(request.Id, request.Params.TextDocument.URI)
+
+			writeResponse(writer, response)
+		}
+	case "textDocument/completion":
+		{
+			var request lsp.CompletionRequest
+			if err := json.Unmarshal(content, &request); err != nil {
+				logger.Printf("textDocument/completion: %s", err)
+				return
+			}
+
+			response := state.TextDocumentCompletion(request.Id, request.Params.TextDocument.URI)
 
 			writeResponse(writer, response)
 		}
